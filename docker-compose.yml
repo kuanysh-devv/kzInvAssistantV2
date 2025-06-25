@@ -1,0 +1,40 @@
+version: '3.9'
+
+services:
+  redis:
+    image: redis:7
+    container_name: kz_redis
+    ports:
+      - "6379:6379"
+
+  db:
+    image: postgres:15
+    container_name: kz_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: kzinvbot
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kz_bot
+    depends_on:
+      - db
+      - redis
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+    command: >
+      sh -c "
+        python manage.py migrate &&
+        python manage.py runbot
+      "
+volumes:
+  pgdata:

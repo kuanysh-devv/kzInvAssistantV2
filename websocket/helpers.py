@@ -37,6 +37,12 @@ def get_assistant_id_by_object_id(object_id):
 
 
 @sync_to_async
+def get_assistant_desc_by_object_id(object_id):
+    assistant = Assistant.objects.filter(id=object_id).first()
+    return assistant.description if assistant else None
+
+
+@sync_to_async
 def log_interaction(username, question, answer):
     InteractionLog.objects.create(
         username=username,

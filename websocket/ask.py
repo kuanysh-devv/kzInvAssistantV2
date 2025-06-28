@@ -118,7 +118,7 @@ async def ask_assistant_ws(question: str, user_id: int, username: str) -> Any | 
 
             # Cache only if answer is not a fallback message
             if not final_message.strip().startswith("К сожалению"):
-                cache.set(cache_key, final_message, timeout=6)
+                cache.set(cache_key, final_message, timeout=600)
 
             await log_interaction(username, question, final_message)
             return final_message

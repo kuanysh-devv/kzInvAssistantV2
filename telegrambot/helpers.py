@@ -1,26 +1,17 @@
 from __future__ import annotations
-from .models import Assistant, InteractionLog
+from websocket.helpers import get_assistants, log_interaction
 import asyncio
-import json
-from datetime import datetime
-from asgiref.sync import sync_to_async
+from websocket.ask import get_question_cache_key, get_user_thread, set_user_thread, get_selected_object_id
 from aiogram.enums import ChatAction
 from aiogram.types import Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from dotenv import load_dotenv
 from openai import OpenAI
-import time
 import os
 from django.core.cache import cache
 
 load_dotenv()
-import httpx
-import certifi
 
-
-# Store thread IDs for each user
-user_threads = {}
-user_selected_assistants = {}
 
 # Initialize OpenAI client
 client = OpenAI(
@@ -30,31 +21,11 @@ client = OpenAI(
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-# Function to log the interaction
-@sync_to_async
-def log_interaction(username, question, answer):
-    # Prepare the log entry
-    InteractionLog.objects.create(
-        username=username,
-        question=question,
-        answer=answer
-    )
-
-
-@sync_to_async
-def get_assistants():
-    assistants = cache.get("assistants_list")
-    if not assistants:
-        assistants = list(Assistant.objects.values("assistant_id", "name", "description"))
-        cache.set("assistants_list", assistants, timeout=60 * 5)  # cache for 5 minutes
-    return assistants
-
-
 async def send_assistant_menu(event: Message | CallbackQuery):
     assistants = await get_assistants()
     keyboard = InlineKeyboardBuilder()
     for assistant in assistants:
-        keyboard.button(text=assistant["name"], callback_data=assistant["assistant_id"])
+        keyboard.button(text=assistant["name"], callback_data=str(assistant["id"]))
     keyboard.adjust(1)
 
     if isinstance(event, CallbackQuery):
@@ -74,17 +45,24 @@ async def ask_assistant_bot(question: str, user_id: int, username: str, message:
     """
     Handles user question by sending it to the assistant and returning annotated answer.
     """
-    selected_assistant_id = user_selected_assistants.get(user_id)
+    selected_assistant_id = await get_selected_object_id(user_id)
     if not selected_assistant_id:
         await send_assistant_menu(message)
         return
 
+    cache_key = get_question_cache_key(selected_assistant_id, question)
+    cached_answer = cache.get(cache_key)
+    if cached_answer:
+        print("[CACHE HIT - Telegram bot]")
+        await message.answer(cached_answer)
+        return
+
     # Get or create the user's thread
-    thread_id = user_threads.get(user_id)
+    thread_id = get_user_thread(user_id)
     if not thread_id:
         thread = await asyncio.to_thread(client.beta.threads.create)
         thread_id = thread.id
-        user_threads[user_id] = thread_id
+        set_user_thread(user_id, thread_id)
     else:
         thread = await asyncio.to_thread(client.beta.threads.retrieve, thread_id)
 
@@ -149,6 +127,9 @@ async def ask_assistant_bot(question: str, user_id: int, username: str, message:
                 for text, indices in citations.items()
             ]
             final_message = message_text + "\n\n" + "\n".join(formatted_citations)
+
+            if not final_message.strip().startswith("К сожалению"):
+                cache.set(cache_key, final_message, timeout=600)
 
             await log_interaction(username, question, final_message)
             yield final_message

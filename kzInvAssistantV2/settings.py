@@ -84,7 +84,7 @@ DATABASES = {
         'NAME': os.getenv('POSTGRES_DB'),
         'USER': os.getenv('POSTGRES_USER'),
         'PASSWORD': os.getenv('POSTGRES_PASSWORD'),
-        'HOST': 'localhost',
+        'HOST': 'db',
         'PORT': 5432,
         'ATOMIC_REQUESTS': True,
     }
@@ -143,7 +143,7 @@ CELERY_TASK_SERIALIZER = 'json'
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "redis://localhost:6379/1",
+        "LOCATION": "redis://redis:6379/1",
         # Use a different Redis DB index for cache than Celery if you want (here DB 1)
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",

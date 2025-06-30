@@ -11,6 +11,12 @@ WORKDIR /app
 # Copy files
 COPY . /app
 
+COPY wait-for-it.sh /wait-for-it.sh
+RUN chmod +x /wait-for-it.sh
+
+COPY init-db.sh /init-db.sh
+RUN chmod +x /init-db.sh
+
 # Install Python dependencies
 RUN pip install --upgrade --trusted-host pypi.org --trusted-host files.pythonhosted.org pip
 RUN pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org -r requirements.txt

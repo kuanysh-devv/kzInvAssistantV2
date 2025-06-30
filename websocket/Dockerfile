@@ -10,6 +10,12 @@ WORKDIR /app
 
 COPY . /app
 
+COPY wait-for-it.sh /wait-for-it.sh
+RUN chmod +x /wait-for-it.sh
+
+COPY init-db.sh /init-db.sh
+RUN chmod +x /init-db.sh
+
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Make sure Django env is available (if needed)

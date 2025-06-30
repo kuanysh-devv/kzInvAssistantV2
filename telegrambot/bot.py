@@ -1,14 +1,16 @@
 from __future__ import annotations
-import json
+import asyncio
 from aiogram.methods import SendChatAction
+from django.core.cache import cache
 from telegram.constants import ChatAction
 import os
 from aiogram import Bot, Dispatcher, Router
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command, CommandStart
-from .helpers import (ask_assistant_bot, user_threads, client, user_selected_assistants, send_assistant_menu,
-                      get_assistants)
-from asgiref.sync import sync_to_async
+from websocket.ask import get_user_thread, set_user_thread
+from websocket.helpers import (get_assistant_id_by_object_id, get_assistant_desc_by_object_id,
+                               get_assistant_name_by_id)
+from .helpers import (ask_assistant_bot, client, send_assistant_menu)
 
 # Load environment variables
 from dotenv import load_dotenv
@@ -20,9 +22,6 @@ bot = Bot(token=BOT_TOKEN)
 router = Router()
 dp = Dispatcher()
 dp.include_router(router)
-
-# Path to the JSON file
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 async def get_username(bot: Bot, user_id: int):
@@ -42,11 +41,12 @@ async def start_command_handler(message: Message):
     """
     user_id = message.from_user.id
 
-    # Check if the user already has a thread; otherwise, create a new one
-    if user_id not in user_threads:
-        # Create a new thread for the user
-        thread = client.beta.threads.create()
-        user_threads[user_id] = thread.id  # Store the thread ID for the user
+    # 🔁 Use Redis instead of in-memory dict
+    thread_id = get_user_thread(user_id)
+    if not thread_id:
+        thread = await asyncio.to_thread(client.beta.threads.create)
+        thread_id = thread.id
+        set_user_thread(user_id, thread_id)
 
     await message.answer(
         "Добро пожаловать в бот компании Kazakh Invest! Вот список доступных команд:\n\n"
@@ -82,20 +82,22 @@ async def handle_assistant_selection(callback_query: CallbackQuery):
     Handles the assistant selection made by the user.
     """
     await callback_query.answer()  # Acknowledge the query
-    ASSISTANTS = await get_assistants()
+
     selected_assistant_id = callback_query.data
     user_id = callback_query.from_user.id
 
     # Store the selected assistant for the user
-    user_selected_assistants[user_id] = selected_assistant_id
+    selected_assistant = await get_assistant_id_by_object_id(selected_assistant_id)
+    cache.set(f"user_assistant:{user_id}", selected_assistant, timeout=3600)
 
     # Get assistant details for confirmation
-    selected_assistant = next((a for a in ASSISTANTS if a["assistant_id"] == selected_assistant_id), None)
+    name = await get_assistant_name_by_id(selected_assistant_id)
+    desc = await get_assistant_desc_by_object_id(selected_assistant_id)
 
     if selected_assistant:
         await callback_query.message.edit_text(
-            f"Вы выбрали ассистента: {selected_assistant['name']}."
-            f"\nОписание: {selected_assistant['description']}"
+            f"Вы выбрали ассистента: {name}."
+            f"\nОписание: {desc}"
             "\nТеперь вы можете задать ваш вопрос."
         )
     else:
